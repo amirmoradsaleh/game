@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#4a2170">
+<title>Bubble Quest Legends</title>
+<style>
+  :root {
+    --panel: #ffffff;
+    --panel-2: #f3ecff;
+    --ink: #4a2170;
+    --ink-soft: #7a5aa8;
+    --gold: #ffc93c;
+    --gold-dark: #e0932a;
+    --shadow: 0 8px 24px rgba(40,10,70,.35);
+    --radius: 22px;
+    font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #030D2D;
+    user-select: none; -webkit-user-select: none;
+  }
+  #stage {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: #04123F; /* solid dark around the phone screen (no image here) */
+  }
+  #frame {
+    position: relative; height: 100%; aspect-ratio: 540 / 960;
+    max-width: 100vw; max-height: 100vh;
+    box-shadow: 0 0 60px rgba(0,0,0,.5);
+    overflow: hidden; /* clip the scene to the gameplay viewport only */
+    background: #04123F; /* fallback; scene image (cover) set at runtime */
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+  }
+  #board { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- HUD ---------- */
+  .hud { position: absolute; left: 0; right: 0; pointer-events: none; }
+  .hud .btn, .hud button { pointer-events: auto; }
+  .topbar {
+    top: 0; padding: 14px 12px 0; display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 8px;
+  }
+  /* ===== live star-progress bar (compact, top-centre) ===== */
+  .progress-wrap { flex: 1; align-self: flex-start; max-width: 150px; margin: 4px 8px 0; pointer-events: none; }
+  .pstars { position: relative; height: 13px; margin-bottom: 3px; }
+  .pstar { position: absolute; transform: translate(-50%, 0); font-size: 12px; line-height: 1; color: rgba(200,225,255,.36); text-shadow: 0 1px 1px rgba(0,0,0,.5); transition: color .3s ease, transform .3s cubic-bezier(.33,1,.68,1); will-change: transform; }
+  .pstar.lit { color: #ffd23f; text-shadow: 0 0 8px rgba(255,210,63,.95), 0 1px 1px rgba(0,0,0,.5); }
+  .pstar.pop { animation: pstarPop .42s cubic-bezier(.34,1.25,.64,1); }
+  @keyframes pstarPop { 0% { transform: translate(-50%,0) scale(1); } 45% { transform: translate(-50%,-2px) scale(1.5); } 100% { transform: translate(-50%,0) scale(1); } }
+  .progress-track { position: relative; height: 7px; border-radius: 6px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(14,44,84,.82), rgba(7,22,46,.85));
+    border: 1px solid rgba(160,210,255,.6);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 7px rgba(80,160,245,.35); }
+  .progress-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; border-radius: 6px;
+    background: linear-gradient(180deg, #a6ecff, #45b0ee 50%, #2f8ad8);
+    box-shadow: 0 0 8px rgba(140,225,255,.9); transition: width .5s cubic-bezier(.33,1,.68,1); }
+  .progress-fill::after { content: ''; position: absolute; inset: 0; border-radius: 6px;
+    background: linear-gradient(90deg, transparent 20%, rgba(255,255,255,.45) 50%, transparent 80%);
+    animation: pshine 2s linear infinite; }
+  @keyframes pshine { 0% { transform: translateX(-100%); } 100% { transform: translateX(220%); } }
+  .chip {
+    background: linear-gradient(180deg, #ffffff, #efe6ff);
+    border-radius: 13px; box-shadow: var(--shadow);
+    padding: 5px 12px; text-align: center; min-width: 58px;
+    border: 2px solid rgba(255,255,255,.7);
+  }
+  /* ===== live star-progress bar (underwater premium) ===== */
+  .chip .label { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--ink-soft); text-transform: uppercase; }
+  .chip .value { font-size: 16px; font-weight: 900; color: var(--ink); line-height: 1; margin-top: 1px; }
+
+  .icon-btn {
+    width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(180deg, #ffffff, #e7d8ff);
+    box-shadow: var(--shadow); font-size: 20px; color: var(--ink);
+    display: grid; place-items: center; transition: transform .08s;
+  }
+  .icon-btn:active { transform: scale(.9); }
+  .right-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+
+  /* ---------- Ability Bar ---------- */
+  .ability-bar {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; pointer-events: auto; z-index: 6;
+    animation: barIn .24s cubic-bezier(.33,1,.68,1) both;
+  }
+  @keyframes barIn { from { opacity: 0; transform: translate(-50%, 24px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .ability {
+    --acol: #ff5d6c;
+    position: relative; width: 52px; height: 52px; border-radius: 16px; border: none; cursor: pointer;
+    background: linear-gradient(180deg, #ffffff, #efe6ff);
+    box-shadow: var(--shadow), inset 0 2px 3px rgba(255,255,255,.7);
+    display: grid; place-items: center; transition: transform .1s, box-shadow .15s, filter .15s;
+  }
+  .ability .ability-icon { font-size: 24px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0,0,0,.25)); }
+  .ability .ability-count {
+    position: absolute; right: -5px; bottom: -5px;
+    background: linear-gradient(180deg, var(--acol), #00000033), var(--acol);
+    color: #fff; font-weight: 900; font-size: 11px; border-radius: 10px;
+    padding: 1px 6px; box-shadow: 0 2px 4px rgba(0,0,0,.3); border: 1.5px solid rgba(255,255,255,.8);
+  }
+  .ability:active { transform: scale(.9); }
+  .ability.equipped {
+    box-shadow: 0 0 0 3px var(--acol), 0 0 18px var(--acol), var(--shadow);
+    filter: saturate(1.15); animation: abilityPulse 1s ease-in-out infinite;
+  }
+  @keyframes abilityPulse { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+  .ability.depleted { filter: grayscale(1) brightness(.85); opacity: .5; cursor: default; }
+
+  /* ---------- Entrance / feedback animations ---------- */
+  .chip, .right-col { animation: hudDrop .24s cubic-bezier(.33,1,.68,1) both; }
+  .right-col { animation-delay: .05s; }
+  @keyframes hudDrop { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+  .obj-count { transition: transform .18s cubic-bezier(.33,1,.68,1), color .2s; display: inline-block; }
+  .obj-count.bump { transform: scale(1.5); }
+  .icon-btn:hover { filter: brightness(1.06); }
+  .cta:hover { filter: brightness(1.05); }
+  .stars span { display: inline-block; opacity: 0; transform: scale(.3); animation: starPop .45s cubic-bezier(.33,1,.68,1) forwards; }
+  .stars span:nth-child(2) { animation-delay: .18s; }
+  .stars span:nth-child(3) { animation-delay: .36s; }
+  @keyframes starPop { to { opacity: 1; transform: scale(1); } }
+
+  /* ---------- Screens: Menu / Map / Panels ---------- */
+  .screen { display: none; }
+  .screen.show { display: flex; }
+  .overlay.screen { background: transparent; flex-direction: column; }
+
+  .menu {
+    margin: auto; display: flex; flex-direction: column; align-items: center; gap: 16px;
+    padding: 24px; width: 78%;
+  }
+  .menu-logo {
+    font-weight: 900; font-size: 46px; line-height: .95; text-align: center; color: #ffd23f;
+    text-shadow: 0 4px 0 #b9701a, 0 6px 14px rgba(0,0,0,.5); letter-spacing: 1px; margin-bottom: 18px;
+    animation: logoIn .4s cubic-bezier(.33,1,.68,1) both;
+  }
+  .menu-logo span { color: #ff8a3d; }
+  .menu-logo small { display: block; font-size: 18px; color: #fff; letter-spacing: 6px; margin-top: 6px; -webkit-text-stroke: 0; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
+  @keyframes logoIn { from { opacity: 0; transform: translateY(-24px) scale(.8); } to { opacity: 1; transform: none; } }
+  .menu-btn {
+    width: 100%; max-width: 300px; padding: 16px; border: none; border-radius: 16px; cursor: pointer;
+    font-weight: 900; font-size: 20px; color: #fff; letter-spacing: 1px;
+    background: linear-gradient(180deg, #3fa9ff, #1f73d6); box-shadow: 0 5px 0 #145aa8, 0 8px 16px rgba(0,0,0,.4);
+    transition: transform .08s, box-shadow .08s; animation: btnIn .24s cubic-bezier(.33,1,.68,1) both;
+  }
+  .menu-btn.play { background: linear-gradient(180deg, #5fe08a, #2fae5a); box-shadow: 0 5px 0 #1f8a44, 0 8px 16px rgba(0,0,0,.4); font-size: 24px; }
+  .menu-btn:nth-child(3){ animation-delay:.06s } .menu-btn:nth-child(4){ animation-delay:.12s }
+  .menu-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #145aa8, 0 3px 8px rgba(0,0,0,.4); }
+  @keyframes btnIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+  .map-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; gap: 8px; z-index: 2; }
+  .map-title { font-weight: 900; font-size: 18px; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.6); letter-spacing: 1px; }
+  /* ===== Level Map (rebuilt): bottom-anchored snake path, append-only nodes,
+     native content-visibility virtualization for smooth 60fps scrolling ===== */
+  #mapScreen { align-items: stretch; justify-content: flex-start; }
+  .map-scroll { flex: 1; align-self: stretch; width: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; position: relative; }
+  .map-nodes { position: relative; width: 100%; margin: 0 auto; min-height: 100%; }
+  .map-node {
+    position: absolute; left: 50%; width: 64px; height: 64px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.55); cursor: pointer; z-index: 3;
+    background: radial-gradient(circle at 40% 32%, #6fe08a, #2fae5a 70%); color: #fff; font-weight: 900;
+    box-shadow: 0 5px 0 rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.4); transition: transform .12s ease;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .map-node .map-num { font-size: 20px; text-shadow: 0 2px 3px rgba(0,0,0,.5); }
+  .map-node .map-stars { position: absolute; left: 50%; bottom: -13px; transform: translateX(-50%); font-size: 12px; color: #ffd23f; letter-spacing: -1px; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .map-node.locked { background: radial-gradient(circle at 40% 32%, #79818f, #3a4251 70%); border-color: rgba(255,255,255,.22); color: rgba(255,255,255,.55); cursor: default; box-shadow: 0 4px 0 rgba(0,0,0,.3); }
+  .map-node.done { background: radial-gradient(circle at 40% 32%, #ffd98a, #e0a416 70%); }
+  .map-node.current { background: radial-gradient(circle at 40% 32%, #5fd0ff, #2f8fd6 70%); animation: mapGlow 1.3s ease-in-out infinite; }
+  @keyframes mapGlow {
+    0%,100% { box-shadow: 0 5px 0 rgba(0,0,0,.35), 0 0 0 4px rgba(120,200,255,.3), 0 0 16px rgba(95,208,255,.7); }
+    50% { box-shadow: 0 5px 0 rgba(0,0,0,.35), 0 0 0 7px rgba(120,200,255,.5), 0 0 30px rgba(95,208,255,1); }
+  }
+  .map-node.milestone { border-color: #ffd23f; }
+  .map-node.milestone::after { content: '★'; position: absolute; top: -12px; right: -8px; font-size: 15px; color: #ffd23f; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .map-node.press, .map-node:not(.locked):active { transform: scale(.9); }
+  /* connector dot between consecutive levels (snake path) */
+  .map-dot { position: absolute; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: rgba(255,255,255,.4); z-index: 2; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  /* purely-decorative environment objects (never block nodes) */
+  .map-deco { position: absolute; left: 50%; z-index: 1; pointer-events: none; font-size: 25px; opacity: .82; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+  /* tiny loading indicator (dots) at the top-centre while more levels load */
+  .map-spinner { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: none; gap: 6px; z-index: 6; }
+  .map-spinner.show { display: flex; }
+  .map-spinner span { width: 9px; height: 9px; border-radius: 50%; background: #fff; opacity: .7; animation: mapDots 1s infinite ease-in-out; }
+  .map-spinner span:nth-child(2) { animation-delay: .15s; } .map-spinner span:nth-child(3) { animation-delay: .3s; }
+  @keyframes mapDots { 0%,100% { transform: translateY(0); opacity: .4; } 50% { transform: translateY(-6px); opacity: 1; } }
+
+  .panel { margin: auto; background: linear-gradient(180deg, #0b2350, #071634); border: 2px solid rgba(255,255,255,.18); border-radius: 20px; padding: 22px; width: 80%; max-width: 340px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,.5); animation: pop .24s cubic-bezier(.33,1,.68,1); }
+  .panel h2 { margin: 0 0 14px; color: #fff; }
+  .coll-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .coll-cell { background: rgba(255,255,255,.06); border-radius: 12px; padding: 6px; }
+  .coll-cell img { width: 100%; display: block; }
+
+  .stars span { color: rgba(255,255,255,.22); transition: color .25s, transform .25s; display: inline-block; }
+  .stars span.earned { color: #ffd23f; text-shadow: 0 0 12px rgba(255,210,63,.7); transform: scale(1.12); }
+  /* win popup: stars start dim and light up one-by-one (JS-timed) */
+  #winStars span { opacity: .3; transform: scale(1); animation: none; color: rgba(255,255,255,.25); text-shadow: none; }
+  #winStars span.earned { color: #ffd23f; opacity: 1; text-shadow: 0 0 14px rgba(255,210,63,.85); }
+  #winStars span.pop { animation: starBounce .34s cubic-bezier(.34,1.25,.64,1); }
+  @keyframes starBounce { 0% { transform: scale(.4); } 60% { transform: scale(1.14); } 100% { transform: scale(1.12); } }
+  /* dramatic Level Complete entrance */
+  #winPopup .popup { animation: winEntrance .5s cubic-bezier(.25,1.1,.4,1) both; }
+  @keyframes winEntrance { 0% { transform: scale(.6) translateY(14px); opacity: 0; } 60% { transform: scale(1.03) translateY(0); opacity: 1; } 100% { transform: scale(1); } }
+  /* pause menu: smooth slide-up */
+  #pausePopup .popup { animation: pauseSlide .32s cubic-bezier(.33,1,.68,1) both; }
+  @keyframes pauseSlide { from { transform: translateY(28px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* reward popup: scale with bounce */
+  #rewardPopup .popup { animation: rewardBounce .3s cubic-bezier(.33,1,.68,1) both; }
+  @keyframes rewardBounce { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .powerup-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 14px; }
+  .powerup-row { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,255,255,.14); border-radius: 14px; padding: 10px 12px; }
+  .powerup-row .pu-icon { font-size: 28px; width: 34px; text-align: center; }
+  .powerup-row .pu-name { font-weight: 800; color: #eaf2ff; flex: 1; text-align: left; }
+  .powerup-row .pu-count { font-weight: 900; color: #ffd23f; font-size: 18px; min-width: 34px; text-align: right; }
+  .powerup-row .pu-watch { border: none; border-radius: 10px; padding: 7px 12px; font-weight: 800; color: #04123f; cursor: pointer; background: linear-gradient(180deg,#ffe07a,#f2b035); box-shadow: 0 3px 0 #b9701a; }
+  .powerup-row .pu-watch:active { transform: translateY(2px); box-shadow: 0 1px 0 #b9701a; }
+  .powerup-hint { font-size: 12px; color: rgba(255,255,255,.6); margin: 0 0 14px; }
+  .ability.depleted { opacity: .96; }
+  .ability.watch { box-shadow: 0 0 0 2px rgba(255,210,63,.7), 0 4px 10px rgba(0,0,0,.4); }
+  .ability.watch .ability-count { color: #ffd23f; font-size: 11px; }
+
+  .reward-items { display: flex; justify-content: center; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+  .tutorial-icon { font-size: 56px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0,0,0,.4)); animation: nodePulse 1.4s ease-in-out infinite; }
+  /* in-game (during gameplay) tutorial: darkening is drawn on the canvas, so the
+     overlay is transparent and the card slides up from the bottom */
+  #tutorialPopup.ingame { background: transparent; align-items: flex-end; padding-bottom: 94px; pointer-events: none; }
+  #tutorialPopup.ingame .popup { pointer-events: auto; width: 86%; max-width: 360px; padding: 18px 20px; animation: tutSlide .28s cubic-bezier(.33,1,.68,1); }
+  #tutorialPopup.ingame .popup .banner { font-size: 44px; }
+  #tutorialPopup.ingame .popup h2 { font-size: 22px; }
+  @keyframes tutSlide { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .ability.tut-glow { animation: tutGlow 1s ease-in-out infinite; z-index: 8; }
+  @keyframes tutGlow {
+    0%,100% { box-shadow: 0 0 0 2px rgba(255,233,163,.7), 0 0 12px rgba(255,233,163,.6); }
+    50% { box-shadow: 0 0 0 4px rgba(255,233,163,.98), 0 0 22px rgba(255,233,163,.9); }
+  }
+  .reward-chip { display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,.1); border: 1.5px solid rgba(255,255,255,.25); border-radius: 14px; padding: 8px 12px; }
+  .reward-icon { font-size: 26px; }
+  .reward-x { font-weight: 900; color: #ffd23f; font-size: 18px; }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(30,8,50,.55); backdrop-filter: blur(3px); z-index: 20; pointer-events: auto;
+  }
+  .overlay.show { display: flex; animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .popup {
+    width: 78%; max-width: 340px; background: linear-gradient(180deg, #ffffff, #f0e6ff);
+    border-radius: 28px; box-shadow: var(--shadow); border: 3px solid rgba(255,255,255,.8);
+    padding: 26px 22px; text-align: center; animation: pop .24s cubic-bezier(.33,1,.68,1);
+  }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes popOut { from { transform: scale(1); opacity: 1; } to { transform: scale(.7); opacity: 0; } }
+  .popup.closing { animation: popOut .18s ease-in forwards; }
+
+  /* ---- Pause menu ---- */
+  .pause-actions { display: flex; gap: 14px; justify-content: center; margin: 10px 0 8px; }
+  .icon-cta {
+    flex: 1; max-width: 130px; border: none; cursor: pointer; border-radius: 20px;
+    padding: 16px 10px 13px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: #fff; font-weight: 900; font-size: 15px; transition: transform .08s, box-shadow .08s;
+  }
+  .icon-cta .ic { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,.3)); }
+  .icon-cta.continue { background: linear-gradient(180deg, #6ad06a, #34a54a); box-shadow: 0 6px 0 #2b8c3d, var(--shadow); }
+  .icon-cta.restart { background: linear-gradient(180deg, #55b7ff, #2f7fd6); box-shadow: 0 6px 0 #1f5fa8, var(--shadow); }
+  .icon-cta:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.3), var(--shadow); }
+  .cta.exit {
+    display: block; width: 70%; margin: 12px auto 2px; padding: 11px 20px; border-radius: 16px;
+    background: rgba(120,110,140,.16); color: var(--ink-soft); box-shadow: none; border: 2px solid rgba(120,110,140,.22);
+    font-size: 15px; font-weight: 800;
+  }
+  .cta.exit:active { transform: translateY(2px); }
+  .menu-btn.play { animation: btnPulse 2.4s ease-in-out infinite; }
+  @keyframes btnPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+  .popup h2 { margin: 6px 0 4px; font-size: 30px; font-weight: 900; color: var(--ink); }
+  .popup .banner {
+    font-size: 40px; margin-bottom: 6px;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.2));
+  }
+  .popup p { color: var(--ink-soft); font-weight: 700; margin: 6px 0 18px; font-size: 15px; }
+  .stars { font-size: 34px; letter-spacing: 4px; margin: 4px 0 10px; }
+  .win-bonus { display: none; font-weight: 900; color: #ffb020; font-size: 17px; margin: 2px 0 8px; letter-spacing: .5px; text-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  .win-bonus.show { display: block; animation: bonusPop .4s cubic-bezier(.33,1,.68,1) both; }
+  @keyframes bonusPop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+  /* premium press / scale feedback across the UI */
+  .cta:active { transform: translateY(2px) scale(.98); }
+  .icon-btn:active, .icon-cta:active { transform: scale(.92); }
+  .overlay .popup { will-change: transform, opacity; }
+  .cta {
+    display: inline-block; border: none; cursor: pointer; margin: 6px 6px 0;
+    padding: 13px 26px; border-radius: 18px; font-weight: 900; font-size: 16px; color: #fff;
+    background: linear-gradient(180deg, #6ad06a, #34a54a);
+    box-shadow: 0 5px 0 #2b8c3d, var(--shadow); transition: transform .08s, box-shadow .08s;
+  }
+  .cta.secondary { background: linear-gradient(180deg, #ffb14e, var(--gold-dark)); box-shadow: 0 5px 0 #b96e15, var(--shadow); }
+  .cta:active { transform: translateY(4px); box-shadow: 0 1px 0 #2b8c3d, var(--shadow); }
+  .cta.secondary:active { box-shadow: 0 1px 0 #b96e15, var(--shadow); }
+
+  /* loading */
+  #loading { background: linear-gradient(180deg, #04123F, #030D2D); z-index: 30; }
+  #loading .logo { font-size: 34px; font-weight: 900; color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,.25); letter-spacing: .02em; }
+  #loading .logo small { display: block; font-size: 14px; color: #ffd98a; letter-spacing: .3em; margin-top: 6px; }
+  .loadwrap { text-align: center; }
+  .loadbar { width: 220px; height: 14px; border-radius: 10px; background: rgba(0,0,0,.3); margin: 26px auto 0; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,.4); }
+  #loadingBar { height: 100%; width: 0; border-radius: 10px; background: linear-gradient(90deg, #ffe07a, var(--gold-dark)); transition: width .12s ease; }
+  .loadtip { color: rgba(255,255,255,.8); font-weight: 700; margin-top: 14px; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="frame">
+      <canvas id="board" width="540" height="960"></canvas>
+
+      <!-- Top HUD (in-level) -->
+      <div class="hud topbar" id="topbar">
+        <div class="chip"><div class="value" id="levelLabel">Level 1</div></div>
+        <!-- Live star-progress bar (top-centre, between level and pause) -->
+        <div class="progress-wrap" id="progressWrap">
+          <div class="pstars">
+            <span class="pstar" id="pstar1">★</span>
+            <span class="pstar" id="pstar2">★</span>
+            <span class="pstar" id="pstar3">★</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+        <div class="right-col">
+          <button class="icon-btn" id="pauseBtn" aria-label="Pause">⏸</button>
+          <button class="icon-btn" id="muteBtn" aria-label="Mute">🔊</button>
+        </div>
+      </div>
+
+      <div class="ability-bar" id="abilityBar"></div>
+
+      <!-- Loading -->
+      <div class="overlay" id="loading">
+        <div class="loadwrap">
+          <div class="logo">Bubble Quest<small>LEGENDS</small></div>
+          <div class="loadbar"><div id="loadingBar"></div></div>
+          <div class="loadtip">Loading…</div>
+        </div>
+      </div>
+
+      <!-- MAIN MENU -->
+      <div class="overlay screen" id="menuScreen">
+        <div class="menu">
+          <div class="menu-logo">BUBBLE<br><span>QUEST</span><small>LEGENDS</small></div>
+          <button class="menu-btn play" id="playBtn">PLAY</button>
+          <button class="menu-btn" id="powerupsBtn">POWER-UPS</button>
+          <button class="menu-btn" id="collectionBtn">COLLECTION</button>
+          <button class="menu-btn" id="settingsBtn">SETTINGS</button>
+        </div>
+      </div>
+
+      <!-- POWER-UPS / SPECIAL INVENTORY -->
+      <div class="overlay screen" id="powerupsScreen">
+        <div class="panel">
+          <h2>Power-Ups</h2>
+          <div class="powerup-list" id="powerupList"></div>
+          <p class="powerup-hint">Out of a power-up? Watch a short video to receive +3.</p>
+          <button class="cta" id="powerupsClose">Close</button>
+        </div>
+      </div>
+
+      <!-- LEVEL MAP -->
+      <div class="overlay screen" id="mapScreen">
+        <div class="map-head">
+          <button class="icon-btn" id="mapBackBtn" aria-label="Back">‹</button>
+          <div class="map-title">Level Map</div>
+          <div style="width:40px"></div>
+        </div>
+        <div class="map-scroll" id="mapScroll"><div class="map-nodes" id="mapNodes"></div></div>
+        <div class="map-spinner" id="mapSpinner"><span></span><span></span><span></span></div>
+      </div>
+
+      <!-- COLLECTION -->
+      <div class="overlay screen" id="collectionScreen">
+        <div class="panel">
+          <h2>Collection</h2>
+          <div class="coll-gallery" id="collectionGallery"></div>
+          <button class="cta" id="collectionClose">Close</button>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="overlay screen" id="settingsScreen">
+        <div class="panel">
+          <h2>Settings</h2>
+          <button class="cta" id="settingsMute">Sound: On</button>
+          <button class="cta secondary" id="resetBtn">Reset Progress</button>
+          <button class="cta" id="settingsClose">Close</button>
+        </div>
+      </div>
+
+      <!-- Tutorial -->
+      <div class="overlay" id="tutorialPopup">
+        <div class="popup">
+          <div class="banner tutorial-icon" id="tutorialBanner">💡</div>
+          <h2 id="tutorialTitle">New Mechanic</h2>
+          <p id="tutorialBody"></p>
+          <button class="cta" id="tutorialOk">Got it!</button>
+        </div>
+      </div>
+
+      <!-- Pause -->
+      <div class="overlay" id="pausePopup">
+        <div class="popup pause-popup">
+          <div class="banner">⏸</div>
+          <h2>Paused</h2>
+          <div class="pause-actions">
+            <button class="icon-cta continue" id="resumeBtn"><span class="ic">▶</span><span class="lbl">Continue</span></button>
+            <button class="icon-cta restart" id="restartBtn"><span class="ic">↻</span><span class="lbl">Restart</span></button>
+          </div>
+          <button class="cta exit" id="exitBtn">Exit to Menu</button>
+        </div>
+      </div>
+
+      <!-- Victory -->
+      <div class="overlay" id="winPopup">
+        <div class="popup">
+          <div class="banner">🏆</div>
+          <h2 id="winTitle">Level Complete!</h2>
+          <div class="stars" id="winStars"><span>★</span><span>★</span><span>★</span></div>
+          <p class="win-bonus" id="winBonus"></p>
+          <p>Board cleared — nicely done!</p>
+          <button class="cta" id="winNext">Next Level</button>
+          <button class="cta secondary" id="winMap">Level Map</button>
+        </div>
+      </div>
+
+      <!-- Milestone reward -->
+      <div class="overlay" id="rewardPopup">
+        <div class="popup">
+          <div class="banner">🎁</div>
+          <h2 id="rewardTitle">Reward!</h2>
+          <p>Milestone reached — special balls added to your inventory!</p>
+          <div class="reward-items" id="rewardItems"></div>
+          <button class="cta" id="rewardOk">Claim</button>
+        </div>
+      </div>
+
+      <!-- Failure -->
+      <div class="overlay" id="losePopup">
+        <div class="popup">
+          <div class="banner">💧</div>
+          <h2>Out of Shots</h2>
+          <p>So close! Line up your shots and try again.</p>
+          <button class="cta" id="loseRetry">Retry</button>
+          <button class="cta secondary" id="loseMap">Level Map</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!--SCRIPTS-->
+<script>
+  (function boot() {
+    const $ = (id) => document.getElementById(id);
+    const dom = {
+      loading: $('loading'), loadingBar: $('loadingBar'),
+      topbar: $('topbar'), levelLabel: $('levelLabel'),
+      progressWrap: $('progressWrap'), progressFill: $('progressFill'),
+      pstar1: $('pstar1'), pstar2: $('pstar2'), pstar3: $('pstar3'),
+      pauseBtn: $('pauseBtn'), muteBtn: $('muteBtn'),
+      abilityBar: $('abilityBar'), stage: $('stage'), frame: $('frame'),
+      menuScreen: $('menuScreen'), playBtn: $('playBtn'), collectionBtn: $('collectionBtn'), settingsBtn: $('settingsBtn'),
+      powerupsBtn: $('powerupsBtn'), powerupsScreen: $('powerupsScreen'), powerupList: $('powerupList'), powerupsClose: $('powerupsClose'),
+      mapScreen: $('mapScreen'), mapScroll: $('mapScroll'), mapNodes: $('mapNodes'), mapBackBtn: $('mapBackBtn'), mapSpinner: $('mapSpinner'),
+      collectionScreen: $('collectionScreen'), collectionGallery: $('collectionGallery'), collectionClose: $('collectionClose'),
+      settingsScreen: $('settingsScreen'), settingsMute: $('settingsMute'), settingsClose: $('settingsClose'), resetBtn: $('resetBtn'),
+      tutorialPopup: $('tutorialPopup'), tutorialBanner: $('tutorialBanner'), tutorialTitle: $('tutorialTitle'), tutorialBody: $('tutorialBody'), tutorialOk: $('tutorialOk'),
+      pausePopup: $('pausePopup'), resumeBtn: $('resumeBtn'), restartBtn: $('restartBtn'), exitBtn: $('exitBtn'),
+      winPopup: $('winPopup'), winTitle: $('winTitle'), winStars: $('winStars'), winBonus: $('winBonus'), winNext: $('winNext'), winMap: $('winMap'),
+      rewardPopup: $('rewardPopup'), rewardTitle: $('rewardTitle'), rewardItems: $('rewardItems'), rewardOk: $('rewardOk'),
+      losePopup: $('losePopup'), loseRetry: $('loseRetry'), loseMap: $('loseMap'),
+    };
+    const game = new Game($('board'), dom);
+    game.start();
+    window.addEventListener('resize', () => game._setupCanvas());
+  })();
+</script>
+</body>
+</html>
